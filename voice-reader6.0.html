@@ -1,0 +1,1234 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>语音读词器 - 修复版</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #3b82f6;
+            --primary-dark: #2563eb;
+        }
+        
+        * {
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        .touch-button {
+            min-height: 44px;
+            min-width: 44px;
+        }
+        
+        @keyframes pulse-wave {
+            0%, 100% { opacity: 0.5; transform: scale(1); }
+            50% { opacity: 0.8; transform: scale(1.05); }
+        }
+        
+        .playing .voice-wave {
+            animation: pulse-wave 1s ease-in-out infinite;
+        }
+        
+        .countdown-timer {
+            font-feature-settings: "tnum";
+            font-variant-numeric: tabular-nums;
+        }
+        
+        .word-item {
+            transition: all 0.2s ease;
+        }
+        
+        .word-item.active {
+            background-color: rgba(59, 130, 246, 0.1);
+            border-left: 4px solid var(--primary);
+        }
+        
+        .separator-option.active {
+            background-color: var(--primary);
+            color: white;
+        }
+        
+        #import-area {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out;
+        }
+        
+        #import-area.show {
+            max-height: 200px;
+        }
+        
+        .rotate-180 {
+            transform: rotate(180deg);
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-b from-blue-50 to-indigo-50 min-h-screen">
+    <div class="container mx-auto px-4 py-6 max-w-lg">
+        <header class="text-center mb-8">
+            <div class="flex items-center justify-center gap-3 mb-3">
+                <div class="w-12 h-12 rounded-full bg-gradient-to-r from-primary to-purple-500 flex items-center justify-center">
+                    <i class="fa fa-volume-up text-white text-xl"></i>
+                </div>
+                <h1 class="text-3xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
+                    语音读词器
+                </h1>
+            </div>
+            <p class="text-gray-600 text-sm">支持多种标点分割 · 精确间隔控制 · 稳定可靠</p>
+        </header>
+
+        <main class="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl overflow-hidden border border-white/50">
+            <div class="p-5">
+                <!-- 输入区域 -->
+                <div class="mb-6">
+                    <div class="mb-3">
+                        <label class="block text-gray-700 font-medium mb-2">
+                            输入词语（支持多种标点分隔）：
+                        </label>
+                        <div class="flex gap-2">
+                            <input type="text" id="word-input" placeholder="例如：苹果、香蕉,橙子;草莓 西瓜" 
+                                class="flex-1 px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/30 focus:outline-none">
+                            <button id="add-word-btn" class="touch-button bg-primary hover:bg-primary-dark text-white px-5 rounded-xl font-medium">
+                                <i class="fa fa-plus mr-1"></i>添加
+                            </button>
+                        </div>
+                        
+                        <!-- 导入区域 -->
+                        <div class="mt-3">
+                            <button id="toggle-import-btn" class="touch-button flex items-center gap-2 px-4 py-2 border-2 border-primary text-primary hover:bg-primary/5 rounded-lg transition-all duration-300 w-full justify-center">
+                                <i class="fa fa-upload"></i>
+                                <span>批量导入词语</span>
+                                <i class="fa fa-chevron-down ml-auto transition-transform duration-300" id="import-arrow"></i>
+                            </button>
+                            
+                            <div id="import-area" class="mt-2">
+                                <textarea id="import-text" placeholder="请输入多个词语，用空格或标点分隔（如：苹果、香蕉,橙子 西瓜）" 
+                                    class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/30 focus:outline-none resize-none h-32"></textarea>
+                                <div class="flex gap-2 mt-2">
+                                    <button id="confirm-import" class="touch-button flex-1 bg-primary hover:bg-primary-dark text-white py-2 rounded-lg font-medium">
+                                        <i class="fa fa-check mr-1"></i>确认导入
+                                    </button>
+                                    <button id="clear-import" class="touch-button flex-1 border-2 border-gray-300 text-gray-600 hover:bg-gray-50 py-2 rounded-lg font-medium">
+                                        <i class="fa fa-times mr-1"></i>清空
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- 分隔符选项 -->
+                        <div class="mt-3">
+                            <label class="block text-gray-700 text-sm mb-2">
+                                分隔符选项：
+                            </label>
+                            <div class="flex flex-wrap gap-2">
+                                <button class="separator-option text-sm px-3 py-1 border border-gray-300 rounded-lg" data-separator=" ">空格</button>
+                                <button class="separator-option text-sm px-3 py-1 border border-gray-300 rounded-lg" data-separator="、">顿号</button>
+                                <button class="separator-option text-sm px-3 py-1 border border-gray-300 rounded-lg" data-separator=",">逗号</button>
+                                <button class="separator-option text-sm px-3 py-1 border border-gray-300 rounded-lg" data-separator=";">分号</button>
+                                <button class="separator-option text-sm px-3 py-1 border border-gray-300 rounded-lg" data-separator="。">句号</button>
+                                <button class="separator-option text-sm px-3 py-1 border border-gray-300 rounded-lg" data-separator="/">斜杠</button>
+                                <button class="separator-option active text-sm px-3 py-1 border border-primary rounded-lg bg-primary text-white" data-separator="[\\s、,;。/]+">全部</button>
+                            </div>
+                        </div>
+                        
+                        <p class="text-xs text-gray-500 mt-2">
+                            提示：支持空格、顿号、逗号、分号、句号、斜杠等多种分隔符
+                        </p>
+                    </div>
+                    
+                    <div class="flex gap-2 mb-3">
+                        <div class="flex-1">
+                            <label class="block text-gray-700 text-sm mb-1">朗读次数：</label>
+                            <input type="number" id="repeat-count" min="1" max="10" value="2" 
+                                class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                        </div>
+                        <div class="flex-1">
+                            <label class="block text-gray-700 text-sm mb-1">间隔时间（秒）：</label>
+                            <input type="number" id="interval-time" min="1" max="60" value="5" 
+                                class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                        </div>
+                        <div class="flex-1">
+                            <label class="block text-gray-700 text-sm mb-1">语速：</label>
+                            <select id="speech-rate" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                                <option value="0.5">0.5x</option>
+                                <option value="0.8">0.8x</option>
+                                <option value="1" selected>1.0x</option>
+                                <option value="1.2">1.2x</option>
+                                <option value="1.5">1.5x</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="block text-gray-700 text-sm mb-1">播放顺序：</label>
+                        <div class="flex gap-2">
+                            <button id="order-sequential" class="order-btn flex-1 py-2 bg-primary text-white rounded-lg">
+                                顺序朗读
+                            </button>
+                            <button id="order-random" class="order-btn flex-1 py-2 bg-gray-200 text-gray-700 hover:bg-gray-300 rounded-lg">
+                                随机朗读
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 词语列表 -->
+                <div class="mb-6">
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="font-semibold text-gray-700">
+                            <i class="fa fa-list mr-2"></i>词语列表
+                            <span id="word-count-badge" class="ml-2 px-2 py-1 bg-primary/10 text-primary text-xs rounded-full">0</span>
+                        </h3>
+                        <div class="flex gap-2">
+                            <button id="test-btn" class="text-xs text-primary hover:underline">
+                                <i class="fa fa-play mr-1"></i>测试朗读
+                            </button>
+                            <button id="clear-all-btn" class="text-xs text-red-500 hover:underline">
+                                <i class="fa fa-trash mr-1"></i>清空
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div id="word-list-container" class="max-h-64 overflow-y-auto rounded-lg border border-gray-200 bg-gray-50/50 p-2">
+                        <ul id="word-list" class="space-y-2"></ul>
+                        
+                        <div id="empty-list" class="text-center py-8 text-gray-500">
+                            <i class="fa fa-info-circle text-2xl mb-2"></i>
+                            <p>请输入词语并按"添加"按钮</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- 播放控制 -->
+        <footer class="mt-6 bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl border border-white/50 p-5">
+            <div class="text-center mb-5">
+                <div id="current-word-display" class="text-2xl font-bold text-gray-800 mb-2 min-h-[2.5rem] flex items-center justify-center">
+                    <span id="current-word">准备就绪</span>
+                    <div id="voice-wave" class="voice-wave ml-3 hidden">
+                        <div class="flex space-x-1">
+                            <div class="w-1 h-3 bg-primary rounded-full"></div>
+                            <div class="w-1 h-3 bg-primary rounded-full"></div>
+                            <div class="w-1 h-3 bg-primary rounded-full"></div>
+                        </div>
+                    </div>
+                </div>
+                <div id="play-status" class="text-sm text-gray-500 flex items-center justify-center">
+                    <i class="fa fa-info-circle mr-2"></i>
+                    <span>等待开始...</span>
+                </div>
+                
+                <!-- 间隔倒计时 -->
+                <div id="interval-countdown" class="mt-2 text-sm text-primary font-medium countdown-timer hidden">
+                    <i class="fa fa-clock-o mr-1"></i>
+                    间隔时间: <span id="countdown-seconds">5</span>秒
+                </div>
+            </div>
+
+            <div class="flex justify-between items-center">
+                <button id="prev-btn" class="touch-button w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center text-gray-700 hover:bg-gray-200">
+                    <i class="fa fa-step-backward text-lg"></i>
+                </button>
+                
+                <button id="play-btn" class="touch-button w-20 h-20 rounded-full bg-gradient-to-r from-primary to-purple-500 hover:from-primary-dark hover:to-purple-600 flex items-center justify-center text-white shadow-lg">
+                    <i class="fa fa-play text-2xl" id="play-icon"></i>
+                </button>
+                
+                <button id="next-btn" class="touch-button w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center text-gray-700 hover:bg-gray-200">
+                    <i class="fa fa-step-forward text-lg"></i>
+                </button>
+            </div>
+
+            <div class="mt-5">
+                <div class="flex justify-between text-xs text-gray-500 mb-2">
+                    <span>播放进度</span>
+                    <span id="play-progress">0 / 0</span>
+                </div>
+                <div class="w-full bg-gray-200 rounded-full h-2">
+                    <div id="play-progress-bar" class="bg-gradient-to-r from-primary to-purple-400 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+                </div>
+            </div>
+        </footer>
+
+        <!-- 提示消息 -->
+        <div id="toast" class="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-gray-800/90 text-white px-5 py-3 rounded-xl shadow-xl opacity-0 transition-all duration-300 pointer-events-none z-50 flex items-center gap-3 max-w-md">
+            <i class="fa fa-check-circle text-green-400" id="toast-icon"></i>
+            <span id="toast-message">操作成功</span>
+        </div>
+    </div>
+
+    <script>
+        // ==================== 核心解决方案 ====================
+        
+        const AppState = {
+            words: [],           // 词语列表 [{id, text, interval}]
+            settings: {
+                repeatCount: 2,
+                intervalTime: 5,      // 默认5秒间隔
+                speechRate: 1.0,
+                playOrder: 'sequential',
+                separator: '[\\s、,;。/]+' // 默认分隔符：全部
+            },
+            
+            // 播放状态 - 修复播放控制
+            currentIndex: 0,
+            currentRepeat: 0,
+            isPlaying: false,
+            isPaused: false,
+            playQueue: [],
+            isManualNavigation: false,
+            
+            // 新增：保存播放前的状态
+            previousPlayState: null,
+            
+            // 计时器
+            speechTimer: null,
+            intervalTimer: null,
+            countdownTimer: null,
+            
+            synth: window.speechSynthesis,
+            voices: []
+        };
+
+        // DOM元素
+        const DOM = {
+            wordInput: document.getElementById('word-input'),
+            addWordBtn: document.getElementById('add-word-btn'),
+            toggleImportBtn: document.getElementById('toggle-import-btn'),
+            importArea: document.getElementById('import-area'),
+            importText: document.getElementById('import-text'),
+            confirmImport: document.getElementById('confirm-import'),
+            clearImport: document.getElementById('clear-import'),
+            importArrow: document.getElementById('import-arrow'),
+            separatorOptions: document.querySelectorAll('.separator-option'),
+            repeatCountInput: document.getElementById('repeat-count'),
+            intervalTimeInput: document.getElementById('interval-time'),
+            speechRateSelect: document.getElementById('speech-rate'),
+            orderSequential: document.getElementById('order-sequential'),
+            orderRandom: document.getElementById('order-random'),
+            testBtn: document.getElementById('test-btn'),
+            clearAllBtn: document.getElementById('clear-all-btn'),
+            wordList: document.getElementById('word-list'),
+            emptyList: document.getElementById('empty-list'),
+            wordCountBadge: document.getElementById('word-count-badge'),
+            wordListContainer: document.getElementById('word-list-container'),
+            
+            currentWord: document.getElementById('current-word'),
+            currentWordDisplay: document.getElementById('current-word-display'),
+            voiceWave: document.getElementById('voice-wave'),
+            playStatus: document.getElementById('play-status'),
+            prevBtn: document.getElementById('prev-btn'),
+            playBtn: document.getElementById('play-btn'),
+            playIcon: document.getElementById('play-icon'),
+            nextBtn: document.getElementById('next-btn'),
+            playProgress: document.getElementById('play-progress'),
+            playProgressBar: document.getElementById('play-progress-bar'),
+            
+            intervalCountdown: document.getElementById('interval-countdown'),
+            countdownSeconds: document.getElementById('countdown-seconds'),
+            
+            toast: document.getElementById('toast'),
+            toastIcon: document.getElementById('toast-icon'),
+            toastMessage: document.getElementById('toast-message')
+        };
+
+        // ==================== 初始化 ====================
+        
+        function init() {
+            loadData();
+            updateUI();
+            setupEventListeners();
+            
+            if (window.speechSynthesis) {
+                AppState.voices = AppState.synth.getVoices();
+                if (AppState.synth.onvoiceschanged !== undefined) {
+                    AppState.synth.onvoiceschanged = () => {
+                        AppState.voices = AppState.synth.getVoices();
+                    };
+                }
+            }
+            
+            showToast('语音读词器已就绪', 'success');
+        }
+
+        function loadData() {
+            try {
+                const savedWords = localStorage.getItem('wordReaderWords');
+                const savedSettings = localStorage.getItem('wordReaderSettings');
+                
+                if (savedWords) {
+                    AppState.words = JSON.parse(savedWords);
+                }
+                if (savedSettings) {
+                    AppState.settings = JSON.parse(savedSettings);
+                }
+            } catch (error) {
+                console.error('加载数据失败:', error);
+            }
+        }
+
+        // ==================== 播放控制逻辑 ====================
+        
+        function startPlayback() {
+            if (AppState.words.length === 0) {
+                showToast('请先添加词语', 'warning');
+                return;
+            }
+            
+            if (AppState.isPlaying && !AppState.isPaused) return;
+            
+            // 如果不是暂停后恢复，重新生成队列
+            if (!AppState.isPlaying) {
+                generatePlayQueue();
+                AppState.currentIndex = 0;
+                AppState.currentRepeat = 0;
+            }
+            
+            AppState.isManualNavigation = false;
+            AppState.isPlaying = true;
+            AppState.isPaused = false;
+            
+            updatePlayButton();
+            updatePlayProgress();
+            DOM.playStatus.textContent = '开始播放...';
+            
+            playCurrentWord();
+        }
+
+        function playCurrentWord() {
+            if (!AppState.isPlaying || AppState.isPaused) return;
+            
+            // 检查是否完成
+            if (AppState.currentIndex >= AppState.playQueue.length) {
+                finishPlayback();
+                return;
+            }
+            
+            const wordIndex = AppState.playQueue[AppState.currentIndex];
+            const word = AppState.words[wordIndex];
+            
+            // 更新当前显示
+            DOM.currentWord.textContent = word.text;
+            DOM.playStatus.textContent = `正在朗读 (${AppState.currentRepeat + 1}/${AppState.settings.repeatCount})`;
+            updatePlayProgress();
+            
+            // 激活当前词语项
+            highlightCurrentWord(wordIndex);
+            
+            // 显示声波动画
+            DOM.currentWordDisplay.classList.add('playing');
+            DOM.voiceWave.classList.remove('hidden');
+            
+            // 停止所有之前的语音
+            AppState.synth.cancel();
+            
+            // 创建语音实例
+            const utterance = new SpeechSynthesisUtterance(word.text);
+            utterance.rate = parseFloat(DOM.speechRateSelect.value);
+            
+            // 语音播放结束事件
+            utterance.onend = () => {
+                DOM.currentWordDisplay.classList.remove('playing');
+                DOM.voiceWave.classList.add('hidden');
+                
+                AppState.currentRepeat++;
+                
+                if (AppState.currentRepeat >= AppState.settings.repeatCount) {
+                    // 当前词语重复完成，进入间隔
+                    AppState.currentRepeat = 0;
+                    AppState.currentIndex++;
+                    
+                    // 清除手动导航标记，以便继续正常播放
+                    AppState.isManualNavigation = false;
+                    
+                    // 显示间隔倒计时
+                    startIntervalCountdown();
+                } else {
+                    // 重复当前词语，等待1秒后重复
+                    setTimeout(() => {
+                        if (AppState.isPlaying && !AppState.isPaused && !AppState.isManualNavigation) {
+                            playCurrentWord();
+                        }
+                    }, 1000);
+                }
+            };
+            
+            // 播放
+            AppState.synth.speak(utterance);
+        }
+
+        // 修复：点击词语列表中的词语
+        function playSelectedWord(wordIndex) {
+            if (wordIndex < 0 || wordIndex >= AppState.words.length) return;
+            
+            // 如果正在播放，保存当前状态
+            if (AppState.isPlaying) {
+                AppState.previousPlayState = {
+                    isPlaying: AppState.isPlaying,
+                    isPaused: AppState.isPaused,
+                    currentIndex: AppState.currentIndex,
+                    currentRepeat: AppState.currentRepeat,
+                    isManualNavigation: true // 标记为手动导航
+                };
+            }
+            
+            // 找到词语在播放队列中的位置
+            let queueIndex;
+            if (AppState.playQueue.length > 0) {
+                queueIndex = AppState.playQueue.indexOf(wordIndex);
+                if (queueIndex === -1) {
+                    // 如果没找到，设置为队列中的第一个位置
+                    queueIndex = 0;
+                }
+            } else {
+                queueIndex = wordIndex;
+            }
+            
+            // 设置当前播放位置
+            AppState.currentIndex = queueIndex;
+            AppState.currentRepeat = 0;
+            AppState.isManualNavigation = true;
+            
+            // 停止当前语音
+            AppState.synth.cancel();
+            clearAllTimers();
+            
+            // 如果是播放状态，确保继续播放
+            if (AppState.isPlaying) {
+                // 设置手动导航标记为true，但播放完当前词语后继续
+                setTimeout(() => {
+                    if (AppState.isPlaying && !AppState.isPaused) {
+                        playCurrentWord();
+                    }
+                }, 300);
+            } else {
+                // 如果不是播放状态，只播放当前词语
+                playSingleWordAndContinue(AppState.words[wordIndex].text);
+            }
+        }
+
+        // 播放单个词语并恢复之前的播放状态
+        function playSingleWordAndContinue(text) {
+            // 显示声波动画
+            DOM.currentWordDisplay.classList.add('playing');
+            DOM.voiceWave.classList.remove('hidden');
+            
+            // 更新当前显示
+            DOM.currentWord.textContent = text;
+            DOM.playStatus.textContent = '正在朗读...';
+            
+            // 停止所有之前的语音
+            AppState.synth.cancel();
+            
+            // 创建语音实例
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.rate = parseFloat(DOM.speechRateSelect.value);
+            
+            // 语音播放结束事件
+            utterance.onend = () => {
+                DOM.currentWordDisplay.classList.remove('playing');
+                DOM.voiceWave.classList.add('hidden');
+                
+                // 如果有之前的播放状态，恢复播放
+                if (AppState.previousPlayState && AppState.previousPlayState.isPlaying) {
+                    // 恢复之前的播放状态
+                    AppState.isPlaying = true;
+                    AppState.isPaused = false;
+                    AppState.isManualNavigation = false;
+                    
+                    // 继续播放之前的队列
+                    setTimeout(() => {
+                        playCurrentWord();
+                    }, 1000);
+                } else {
+                    DOM.playStatus.textContent = '点击播放按钮开始';
+                }
+            };
+            
+            // 播放
+            AppState.synth.speak(utterance);
+        }
+
+        // 前进/后退功能
+        function navigateToWord(direction) {
+            // 标记为手动导航
+            AppState.isManualNavigation = true;
+            
+            // 停止当前语音
+            AppState.synth.cancel();
+            clearAllTimers();
+            
+            if (direction === 'prev') {
+                // 上一项
+                if (AppState.currentIndex > 0) {
+                    AppState.currentIndex--;
+                    AppState.currentRepeat = 0;
+                } else if (AppState.isPlaying) {
+                    // 如果是播放中，循环到最后一个
+                    AppState.currentIndex = AppState.playQueue.length - 1;
+                    AppState.currentRepeat = 0;
+                }
+            } else if (direction === 'next') {
+                // 下一项
+                if (AppState.currentIndex < AppState.playQueue.length - 1) {
+                    AppState.currentIndex++;
+                    AppState.currentRepeat = 0;
+                } else if (AppState.isPlaying) {
+                    // 如果是播放中，循环到第一个
+                    AppState.currentIndex = 0;
+                    AppState.currentRepeat = 0;
+                }
+            }
+            
+            // 更新UI
+            const wordIndex = AppState.playQueue[AppState.currentIndex];
+            const word = AppState.words[wordIndex];
+            DOM.currentWord.textContent = word.text;
+            highlightCurrentWord(wordIndex);
+            updatePlayProgress();
+            
+            // 如果正在播放，继续播放新位置的词语
+            if (AppState.isPlaying && !AppState.isPaused) {
+                // 清除手动导航标记，以便继续正常播放
+                AppState.isManualNavigation = false;
+                playCurrentWord();
+            } else {
+                DOM.playStatus.textContent = '准备就绪';
+            }
+        }
+
+        function pausePlayback() {
+            if (!AppState.isPlaying || AppState.isPaused) return;
+            
+            AppState.isPaused = true;
+            AppState.synth.pause();
+            
+            clearAllTimers();
+            
+            updatePlayButton();
+            DOM.playStatus.textContent = '已暂停';
+            DOM.currentWordDisplay.classList.remove('playing');
+        }
+
+        function resumePlayback() {
+            if (!AppState.isPlaying || !AppState.isPaused) return;
+            
+            AppState.isPaused = false;
+            AppState.synth.resume();
+            
+            updatePlayButton();
+            DOM.playStatus.textContent = '播放中...';
+            DOM.currentWordDisplay.classList.add('playing');
+            
+            playCurrentWord();
+        }
+
+        function stopPlayback() {
+            if (!AppState.isPlaying) return;
+            
+            AppState.synth.cancel();
+            AppState.isPlaying = false;
+            AppState.isPaused = false;
+            AppState.isManualNavigation = false;
+            AppState.previousPlayState = null;
+            
+            clearAllTimers();
+            
+            // 更新UI
+            DOM.intervalCountdown.classList.add('hidden');
+            DOM.currentWordDisplay.classList.remove('playing');
+            DOM.voiceWave.classList.add('hidden');
+            DOM.playStatus.textContent = '播放已停止';
+            
+            document.querySelectorAll('.word-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            
+            updatePlayButton();
+        }
+
+        // ==================== 词语分割逻辑 ====================
+        
+        function splitWordsBySeparator(text, separator) {
+            // 修复分割逻辑
+            let regexPattern;
+            
+            if (separator === '[\\s、,;。/]+') {
+                // 全部标点符号
+                regexPattern = /[\s、,;。\/]+/;
+            } else if (separator === ' ') {
+                regexPattern = /\s+/;
+            } else {
+                const escapedSeparator = separator.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                regexPattern = new RegExp(`[${escapedSeparator}\\s]+`);
+            }
+            
+            // 分割并过滤空字符串
+            const words = text.split(regexPattern)
+                .map(word => word.trim())
+                .filter(word => word.length > 0);
+            
+            return words;
+        }
+
+        function addWords() {
+            const inputText = DOM.wordInput.value.trim();
+            if (!inputText) {
+                showToast('请输入词语', 'warning');
+                return;
+            }
+            
+            const words = splitWordsBySeparator(inputText, AppState.settings.separator);
+            
+            if (words.length === 0) {
+                showToast('未找到有效词语', 'warning');
+                return;
+            }
+            
+            let addedCount = 0;
+            const intervalTime = parseInt(DOM.intervalTimeInput.value);
+            
+            words.forEach(word => {
+                const exists = AppState.words.some(item => item.text === word);
+                if (!exists) {
+                    AppState.words.push({
+                        id: Date.now() + Math.random(),
+                        text: word,
+                        interval: intervalTime,
+                        addedAt: Date.now()
+                    });
+                    addedCount++;
+                }
+            });
+            
+            if (addedCount > 0) {
+                saveWords();
+                renderWordList();
+                updateWordCount();
+                
+                DOM.wordInput.value = '';
+                DOM.wordInput.focus();
+                
+                showToast(`成功添加 ${addedCount} 个词语`, 'success');
+            } else {
+                showToast('所有词语都已存在', 'info');
+            }
+        }
+
+        // ==================== 批量导入功能 ====================
+        
+        function toggleImportArea() {
+            DOM.importArea.classList.toggle('show');
+            DOM.importArrow.classList.toggle('rotate-180');
+            
+            if (DOM.importArea.classList.contains('show')) {
+                DOM.importText.focus();
+            }
+        }
+
+        function importWords() {
+            const importText = DOM.importText.value.trim();
+            if (!importText) {
+                showToast('请输入要导入的词语', 'warning');
+                return;
+            }
+            
+            // 修复：使用正确的分隔符分割词语
+            const words = splitWordsBySeparator(importText, AppState.settings.separator);
+            
+            if (words.length === 0) {
+                showToast('未找到有效词语', 'warning');
+                return;
+            }
+            
+            let addedCount = 0;
+            const intervalTime = parseInt(DOM.intervalTimeInput.value);
+            
+            words.forEach(word => {
+                const exists = AppState.words.some(item => item.text === word);
+                if (!exists) {
+                    AppState.words.push({
+                        id: Date.now() + Math.random(),
+                        text: word,
+                        interval: intervalTime,
+                        addedAt: Date.now()
+                    });
+                    addedCount++;
+                }
+            });
+            
+            if (addedCount > 0) {
+                saveWords();
+                renderWordList();
+                updateWordCount();
+                
+                // 清空导入区域并隐藏
+                DOM.importText.value = '';
+                DOM.importArea.classList.remove('show');
+                DOM.importArrow.classList.remove('rotate-180');
+                
+                showToast(`成功导入 ${addedCount} 个词语`, 'success');
+            } else {
+                showToast('所有词语都已存在', 'info');
+            }
+        }
+
+        function clearImportText() {
+            DOM.importText.value = '';
+            DOM.importText.focus();
+            showToast('已清空导入内容', 'info');
+        }
+
+        // ==================== 其他功能函数 ====================
+        
+        function startIntervalCountdown() {
+            if (!AppState.isPlaying || AppState.isPaused || AppState.isManualNavigation) return;
+            
+            // 检查是否播放完成
+            if (AppState.currentIndex >= AppState.playQueue.length) {
+                finishPlayback();
+                return;
+            }
+            
+            // 隐藏声波动画，显示间隔倒计时
+            DOM.currentWordDisplay.classList.remove('playing');
+            DOM.voiceWave.classList.add('hidden');
+            DOM.intervalCountdown.classList.remove('hidden');
+            DOM.playStatus.textContent = '间隔等待中...';
+            
+            const intervalTime = parseInt(DOM.intervalTimeInput.value) * 1000;
+            let remainingSeconds = parseInt(DOM.intervalTimeInput.value);
+            
+            // 更新倒计时显示
+            updateCountdownDisplay(remainingSeconds);
+            
+            // 开始倒计时更新
+            clearInterval(AppState.countdownTimer);
+            AppState.countdownTimer = setInterval(() => {
+                remainingSeconds--;
+                updateCountdownDisplay(remainingSeconds);
+                
+                if (remainingSeconds <= 0) {
+                    clearInterval(AppState.countdownTimer);
+                }
+            }, 1000);
+            
+            // 设置间隔计时器
+            clearTimeout(AppState.intervalTimer);
+            AppState.intervalTimer = setTimeout(() => {
+                // 间隔结束，播放下一个词语
+                DOM.intervalCountdown.classList.add('hidden');
+                
+                if (AppState.isPlaying && !AppState.isPaused && !AppState.isManualNavigation) {
+                    playCurrentWord();
+                }
+            }, intervalTime);
+        }
+
+        function updateCountdownDisplay(seconds) {
+            DOM.countdownSeconds.textContent = seconds;
+        }
+
+        function finishPlayback() {
+            AppState.isPlaying = false;
+            AppState.isPaused = false;
+            AppState.isManualNavigation = false;
+            AppState.previousPlayState = null;
+            
+            clearAllTimers();
+            
+            // 更新UI
+            DOM.intervalCountdown.classList.add('hidden');
+            DOM.currentWordDisplay.classList.remove('playing');
+            DOM.voiceWave.classList.add('hidden');
+            DOM.playStatus.textContent = '播放完成';
+            DOM.currentWord.textContent = '播放完成';
+            
+            document.querySelectorAll('.word-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            
+            updatePlayButton();
+            showToast('所有词语播放完成', 'success');
+        }
+
+        function clearAllTimers() {
+            clearTimeout(AppState.speechTimer);
+            clearTimeout(AppState.intervalTimer);
+            clearInterval(AppState.countdownTimer);
+            
+            AppState.speechTimer = null;
+            AppState.intervalTimer = null;
+            AppState.countdownTimer = null;
+        }
+
+        function generatePlayQueue() {
+            if (AppState.settings.playOrder === 'sequential') {
+                AppState.playQueue = Array.from({ length: AppState.words.length }, (_, i) => i);
+            } else {
+                AppState.playQueue = Array.from({ length: AppState.words.length }, (_, i) => i);
+                for (let i = AppState.playQueue.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [AppState.playQueue[i], AppState.playQueue[j]] = [AppState.playQueue[j], AppState.playQueue[i]];
+                }
+            }
+        }
+
+        function highlightCurrentWord(index) {
+            document.querySelectorAll('.word-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            
+            const wordItems = document.querySelectorAll('.word-item');
+            if (wordItems[index]) {
+                wordItems[index].classList.add('active');
+                
+                wordItems[index].scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'center'
+                });
+            }
+        }
+
+        function updatePlayButton() {
+            if (!AppState.isPlaying) {
+                DOM.playIcon.className = 'fa fa-play text-2xl';
+            } else {
+                if (AppState.isPaused) {
+                    DOM.playIcon.className = 'fa fa-play text-2xl';
+                } else {
+                    DOM.playIcon.className = 'fa fa-pause text-2xl';
+                }
+            }
+        }
+
+        function updatePlayProgress() {
+            const total = AppState.words.length;
+            const current = AppState.currentIndex + 1;
+            
+            DOM.playProgress.textContent = `${current} / ${total}`;
+            
+            const percentage = total > 0 ? (current / total) * 100 : 0;
+            DOM.playProgressBar.style.width = `${percentage}%`;
+        }
+
+        function renderWordList() {
+            if (AppState.words.length === 0) {
+                DOM.wordList.innerHTML = '';
+                DOM.emptyList.classList.remove('hidden');
+                return;
+            }
+            
+            DOM.emptyList.classList.add('hidden');
+            DOM.wordList.innerHTML = '';
+            
+            AppState.words.forEach((word, index) => {
+                const li = document.createElement('li');
+                li.className = 'word-item p-3 rounded-lg border border-gray-200 bg-white cursor-pointer hover:bg-gray-50';
+                li.dataset.index = index;
+                
+                // 修复：为整个词语项添加点击事件
+                li.addEventListener('click', (e) => {
+                    // 确保不是点击在按钮上
+                    if (!e.target.closest('button')) {
+                        playSelectedWord(index);
+                    }
+                });
+                
+                li.innerHTML = `
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center">
+                            <span class="text-gray-400 mr-3 text-sm">${index + 1}.</span>
+                            <span class="font-medium text-gray-800">${word.text}</span>
+                            <span class="ml-2 text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-600">
+                                ${word.interval}秒间隔
+                            </span>
+                        </div>
+                        <div class="flex items-center gap-1">
+                            <button class="play-single-btn touch-button w-8 h-8 rounded-full bg-green-100 text-green-600 hover:bg-green-200 flex items-center justify-center" title="单独朗读">
+                                <i class="fa fa-play text-xs"></i>
+                            </button>
+                            <button class="edit-word-btn touch-button w-8 h-8 rounded-full bg-yellow-100 text-yellow-600 hover:bg-yellow-200 flex items-center justify-center" title="编辑间隔">
+                                <i class="fa fa-pencil text-xs"></i>
+                            </button>
+                            <button class="delete-word-btn touch-button w-8 h-8 rounded-full bg-red-100 text-red-600 hover:bg-red-200 flex items-center justify-center" title="删除">
+                                <i class="fa fa-trash text-xs"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+                
+                DOM.wordList.appendChild(li);
+                
+                // 单独朗读按钮
+                li.querySelector('.play-single-btn').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    playSingleWord(word.text);
+                });
+                
+                // 编辑间隔按钮
+                li.querySelector('.edit-word-btn').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    editWordInterval(index);
+                });
+                
+                // 删除按钮
+                li.querySelector('.delete-word-btn').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    deleteWord(index);
+                });
+            });
+        }
+
+        function playSingleWord(text) {
+            stopPlayback();
+            
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.rate = parseFloat(DOM.speechRateSelect.value);
+            
+            DOM.currentWord.textContent = text;
+            DOM.playStatus.textContent = '正在朗读...';
+            DOM.currentWordDisplay.classList.add('playing');
+            DOM.voiceWave.classList.remove('hidden');
+            
+            utterance.onend = () => {
+                DOM.currentWordDisplay.classList.remove('playing');
+                DOM.voiceWave.classList.add('hidden');
+                DOM.playStatus.textContent = '点击播放按钮开始';
+            };
+            
+            AppState.synth.speak(utterance);
+        }
+
+        function editWordInterval(index) {
+            const word = AppState.words[index];
+            const newInterval = prompt(`修改"${word.text}"的间隔时间（秒）：`, word.interval);
+            
+            if (newInterval !== null && !isNaN(newInterval) && newInterval > 0) {
+                word.interval = parseInt(newInterval);
+                saveWords();
+                renderWordList();
+                showToast(`已更新间隔为 ${newInterval} 秒`, 'success');
+            }
+        }
+
+        function deleteWord(index) {
+            const word = AppState.words[index];
+            if (confirm(`确定要删除"${word.text}"吗？`)) {
+                AppState.words.splice(index, 1);
+                saveWords();
+                renderWordList();
+                updateWordCount();
+                showToast('词语已删除', 'success');
+            }
+        }
+
+        function testPlayback() {
+            if (AppState.words.length === 0) {
+                showToast('请先添加词语', 'warning');
+                return;
+            }
+            
+            const randomIndex = Math.floor(Math.random() * AppState.words.length);
+            const testWord = AppState.words[randomIndex].text;
+            
+            playSingleWord(testWord);
+            showToast(`测试朗读: "${testWord}"`, 'info');
+        }
+
+        function clearAllWords() {
+            if (AppState.words.length === 0) {
+                showToast('词语列表已为空', 'info');
+                return;
+            }
+            
+            if (confirm(`确定要清空所有 ${AppState.words.length} 个词语吗？`)) {
+                AppState.words = [];
+                saveWords();
+                renderWordList();
+                updateWordCount();
+                stopPlayback();
+                showToast('所有词语已清空', 'success');
+            }
+        }
+
+        function updateWordCount() {
+            const count = AppState.words.length;
+            DOM.wordCountBadge.textContent = count;
+        }
+
+        // ==================== 分隔符选择 ====================
+        
+        function setSeparator(separator) {
+            AppState.settings.separator = separator;
+            
+            DOM.separatorOptions.forEach(option => {
+                if (option.dataset.separator === separator) {
+                    option.classList.add('active', 'bg-primary', 'text-white');
+                    option.classList.remove('border-gray-300');
+                } else {
+                    option.classList.remove('active', 'bg-primary', 'text-white');
+                    option.classList.add('border-gray-300');
+                }
+            });
+            
+            saveSettings();
+            showToast(`已设置为 ${separator === '[\\s、,;。/]+' ? '全部标点' : separator} 分隔`, 'success');
+        }
+
+        // ==================== 设置管理 ====================
+        
+        function updateSettings() {
+            AppState.settings.repeatCount = parseInt(DOM.repeatCountInput.value) || 2;
+            AppState.settings.intervalTime = parseInt(DOM.intervalTimeInput.value) || 5;
+            AppState.settings.speechRate = parseFloat(DOM.speechRateSelect.value) || 1.0;
+            
+            saveSettings();
+        }
+
+        function setPlayOrder(order) {
+            AppState.settings.playOrder = order;
+            
+            if (order === 'sequential') {
+                DOM.orderSequential.classList.remove('bg-gray-200', 'text-gray-700');
+                DOM.orderSequential.classList.add('bg-primary', 'text-white');
+                DOM.orderRandom.classList.remove('bg-primary', 'text-white');
+                DOM.orderRandom.classList.add('bg-gray-200', 'text-gray-700');
+            } else {
+                DOM.orderRandom.classList.remove('bg-gray-200', 'text-gray-700');
+                DOM.orderRandom.classList.add('bg-primary', 'text-white');
+                DOM.orderSequential.classList.remove('bg-primary', 'text-white');
+                DOM.orderSequential.classList.add('bg-gray-200', 'text-gray-700');
+            }
+            
+            saveSettings();
+        }
+
+        // ==================== 数据保存 ====================
+        
+        function saveWords() {
+            localStorage.setItem('wordReaderWords', JSON.stringify(AppState.words));
+        }
+
+        function saveSettings() {
+            localStorage.setItem('wordReaderSettings', JSON.stringify(AppState.settings));
+        }
+
+        // ==================== UI更新 ====================
+        
+        function updateUI() {
+            DOM.repeatCountInput.value = AppState.settings.repeatCount;
+            DOM.intervalTimeInput.value = AppState.settings.intervalTime;
+            DOM.speechRateSelect.value = AppState.settings.speechRate.toString();
+            
+            setSeparator(AppState.settings.separator);
+            setPlayOrder(AppState.settings.playOrder);
+            
+            renderWordList();
+            updateWordCount();
+        }
+
+        // ==================== 工具函数 ====================
+        
+        function showToast(message, type = 'info') {
+            let icon = 'fa-info-circle';
+            let color = 'text-blue-400';
+            
+            switch (type) {
+                case 'success': 
+                    icon = 'fa-check-circle'; 
+                    color = 'text-green-400'; 
+                    break;
+                case 'error': 
+                    icon = 'fa-exclamation-circle'; 
+                    color = 'text-red-400'; 
+                    break;
+                case 'warning': 
+                    icon = 'fa-exclamation-triangle'; 
+                    color = 'text-yellow-400'; 
+                    break;
+            }
+            
+            DOM.toastIcon.className = `fa ${icon} ${color}`;
+            DOM.toastMessage.textContent = message;
+            
+            DOM.toast.classList.remove('opacity-0');
+            DOM.toast.classList.add('opacity-100');
+            
+            setTimeout(() => {
+                DOM.toast.classList.remove('opacity-100');
+                DOM.toast.classList.add('opacity-0');
+            }, 3000);
+        }
+
+        // ==================== 事件监听 ====================
+        
+        function setupEventListeners() {
+            // 添加词语按钮
+            DOM.addWordBtn.addEventListener('click', addWords);
+            DOM.wordInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') addWords();
+            });
+            
+            // 导入功能
+            DOM.toggleImportBtn.addEventListener('click', toggleImportArea);
+            DOM.confirmImport.addEventListener('click', importWords);
+            DOM.clearImport.addEventListener('click', clearImportText);
+            
+            // 分隔符选项
+            DOM.separatorOptions.forEach(option => {
+                option.addEventListener('click', () => {
+                    setSeparator(option.dataset.separator);
+                });
+            });
+            
+            // 设置变更
+            DOM.repeatCountInput.addEventListener('change', updateSettings);
+            DOM.intervalTimeInput.addEventListener('change', updateSettings);
+            DOM.speechRateSelect.addEventListener('change', updateSettings);
+            DOM.orderSequential.addEventListener('click', () => setPlayOrder('sequential'));
+            DOM.orderRandom.addEventListener('click', () => setPlayOrder('random'));
+            
+            // 测试和清空按钮
+            DOM.testBtn.addEventListener('click', testPlayback);
+            DOM.clearAllBtn.addEventListener('click', clearAllWords);
+            
+            // 播放控制
+            DOM.playBtn.addEventListener('click', () => {
+                if (!AppState.isPlaying) {
+                    startPlayback();
+                } else {
+                    if (AppState.isPaused) {
+                        resumePlayback();
+                    } else {
+                        pausePlayback();
+                    }
+                }
+            });
+            
+            DOM.prevBtn.addEventListener('click', () => navigateToWord('prev'));
+            DOM.nextBtn.addEventListener('click', () => navigateToWord('next'));
+            
+            // 页面卸载前保存
+            window.addEventListener('beforeunload', () => {
+                saveWords();
+                saveSettings();
+            });
+            
+            // 页面可见性变化
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden && AppState.isPlaying && !AppState.isPaused) {
+                    pausePlayback();
+                    showToast('页面切换到后台，播放已暂停', 'info');
+                }
+            });
+        }
+
+        // ==================== 应用启动 ====================
+        
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
